@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"net"
+	"strings"
 	"sync"
 )
 
@@ -55,13 +56,20 @@ func (s *Server) Serve() {
 
 		go func() {
 			defer conn.Close()
-			fmt.Fprintln(conn, "Hello!")
 
 			scanner := bufio.NewScanner(conn)
 			for scanner.Scan() {
+
 				item := scanner.Text()
-				s.AddItem(item)
-				fmt.Fprintf(conn, "Thanks")
+				if strings.HasPrefix(item, "ADD") {
+					s.AddItem(strings.TrimSpace(strings.TrimPrefix(item, "ADD")))
+				}
+				if strings.HasPrefix(item, "LIST") {
+					for _, i := range s.Items() {
+						fmt.Fprintln(conn, i)
+					}
+				}
+				fmt.Fprintf(conn, "Thanks\n")
 			}
 		}()
 	}
