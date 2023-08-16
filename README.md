@@ -1,2 +1,3 @@
 # groupthink
-Group think
+
+`groupthink` is a Go package implementing a brainstorming server.
