@@ -1,9 +1,6 @@
 package groupthink_test
 
 import (
-	"bufio"
-	"fmt"
-	"net"
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
@@ -18,15 +15,12 @@ func TestServerStoresItemSentByClient(t *testing.T) {
 	}
 	go srv.Serve()
 
-	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	client, err := groupthink.NewClient(srv.Listener.Addr().String())
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Fprintln(conn, "ADD Hello")
-
-	var dummy string
-	_, err = fmt.Fscanln(conn, &dummy)
+	err = client.AddItem("Hello")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -47,65 +41,27 @@ func TestServerStoresItemsSentByMultipleClients(t *testing.T) {
 	}
 	go srv.Serve()
 
-	conn1, err := net.Dial("tcp", srv.Listener.Addr().String())
+	client1, err := groupthink.NewClient(srv.Address)
+	if err != nil {
+		t.Fatal(err)
+	}
+	err = client1.AddItem("First Idea")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Fprintln(conn1, "ADD First Idea")
-
-	var dummy string
-	_, err = fmt.Fscanln(conn1, &dummy)
+	client2, err := groupthink.NewClient(srv.Address)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	conn2, err := net.Dial("tcp", srv.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fmt.Fprintln(conn2, "ADD Second Idea")
-
-	_, err = fmt.Fscanln(conn2, &dummy)
+	err = client2.AddItem("Second Idea")
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	got := srv.Items()
 	want := []string{"First Idea", "Second Idea"}
-
-	if !cmp.Equal(want, got) {
-		t.Error(cmp.Diff(want, got))
-	}
-}
-
-func TestServerStoresItem(t *testing.T) {
-	t.Parallel()
-
-	srv := groupthink.Server{}
-	err := srv.Listen(":0")
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	go srv.Serve()
-
-	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	fmt.Fprintln(conn, "ADD new item")
-
-	var item string
-	_, err = fmt.Fscanln(conn, &item)
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	got := srv.Items()
-	want := []string{"new item"}
 
 	if !cmp.Equal(want, got) {
 		t.Error(cmp.Diff(want, got))
@@ -123,37 +79,24 @@ func TestServerRespondsWithListOfItems(t *testing.T) {
 
 	go srv.Serve()
 
-	conn, err := net.Dial("tcp", srv.Listener.Addr().String())
+	client, err := groupthink.NewClient(srv.Address)
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Fprintln(conn, "ADD new item")
-
-	var item string
-	_, err = fmt.Fscanln(conn, &item)
+	err = client.AddItem("new item")
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	fmt.Fprintln(conn, "LIST")
-
-	scanner := bufio.NewScanner(conn)
-
-	var items []string
-
-	for scanner.Scan() {
-		item := scanner.Text()
-		if item == "Thanks" {
-			break
-		}
-		items = append(items, item)
+	got, err := client.ListItems()
+	if err != nil {
+		t.Fatal(err)
 	}
 
 	want := []string{"new item"}
 
-	if !cmp.Equal(want, items) {
-		t.Error(cmp.Diff(want, items))
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got))
 	}
-
 }

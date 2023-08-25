@@ -37,12 +37,12 @@ func (s *Server) ListenAndServe() error {
 }
 
 func (s *Server) Listen(addr string) error {
-	s.Address = addr
 	l, err := net.Listen("tcp", s.Address)
 	if err != nil {
 		return err
 	}
 	s.Listener = l
+	s.Address = l.Addr().String()
 	return nil
 }
 
@@ -63,13 +63,15 @@ func (s *Server) Serve() {
 				item := scanner.Text()
 				if strings.HasPrefix(item, "ADD") {
 					s.AddItem(strings.TrimSpace(strings.TrimPrefix(item, "ADD")))
+					fmt.Fprintf(conn, "OK\n")
 				}
+
 				if strings.HasPrefix(item, "LIST") {
 					for _, i := range s.Items() {
 						fmt.Fprintln(conn, i)
 					}
+					fmt.Fprintf(conn, "OK\n")
 				}
-				fmt.Fprintf(conn, "Thanks\n")
 			}
 		}()
 	}
@@ -85,4 +87,48 @@ func Start() error {
 	}
 	s.Serve()
 	return nil
+}
+
+type Client struct {
+	Conn net.Conn
+}
+
+func NewClient(addr string) (*Client, error) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		return nil, err
+	}
+	return &Client{
+		Conn: conn,
+	}, nil
+}
+
+func (c *Client) AddItem(item string) error {
+	_, err := fmt.Fprintf(c.Conn, "ADD %s\n", item)
+	if err != nil {
+		return err
+	}
+	var res string
+	_, err = fmt.Fscanln(c.Conn, &res)
+	if err != nil {
+		return err
+	}
+	if res != "OK" {
+		return fmt.Errorf("unexpected response: %s", res)
+	}
+	return nil
+}
+
+func (c *Client) ListItems() ([]string, error) {
+	fmt.Fprintln(c.Conn, "LIST")
+	scanner := bufio.NewScanner(c.Conn)
+	var items []string
+	for scanner.Scan() {
+		item := scanner.Text()
+		if item == "OK" {
+			break
+		}
+		items = append(items, item)
+	}
+	return items, scanner.Err()
 }
