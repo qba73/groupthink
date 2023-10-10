@@ -5,7 +5,6 @@ import (
 	"context"
 	"fmt"
 	"os"
-	"strings"
 
 	"github.com/mr-joshcrane/oracle"
 	"github.com/qba73/groupthink"
@@ -36,10 +35,4 @@ func main() {
 		c.AddItem(answer)
 		fmt.Println(answer)
 	}
-}
-
-func Brainstorm(o *oracle.Oracle, suggestions []string) (string, error) {
-	o.SetPurpose("You generate a single suggestion in a brainstorming session. Try not to repeat yourself.")
-	s := strings.Join(suggestions, "\n")
-	return o.Ask(context.TODO(), s)
 }
