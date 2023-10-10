@@ -32,6 +32,7 @@ func (s *Server) ListenAndServe() error {
 	if err := s.Listen(s.Address); err != nil {
 		return err
 	}
+	fmt.Println("Listening on", s.Address)
 	s.Serve()
 	return nil
 }
