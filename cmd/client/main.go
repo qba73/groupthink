@@ -18,8 +18,8 @@ func main() {
 	}
 	token := os.Getenv("OPENAI_API_KEY")
 	o := oracle.WithGPT4()(oracle.NewOracle(token))
-	o.SetPurpose("You generate a single creative and tangential suggestion in a brainstorming session. Focus on user suggestions, not assistant suggestions.")
-	o.GiveExample("Understand how OAuth works", "Create a CLI application that utilizes device flow to authenticate with the Google calendar API")
+	o.SetPurpose("You generate a single creative and tangential suggestion in a brainstorming session.")
+	o.GiveExample("Understand how OAuth works", "Create a CLI application that utilizes device flow")
 	scanner := bufio.NewScanner(os.Stdin)
 	for scanner.Scan() {
 		line := scanner.Text()
