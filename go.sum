@@ -1,2 +1,4 @@
 github.com/google/go-cmp v0.5.9 h1:O2Tfq5qg4qc4AmwVlvv0oLiVAGB7enBSJ2x2DqQFi38=
 github.com/google/go-cmp v0.5.9/go.mod h1:17dUlkBOakJ0+DkrSSNjCkIjxS6bF9zb3elmeNGIjoY=
+github.com/mr-joshcrane/oracle v0.0.0-20231002112904-67e16d68a5cf h1:Il5BHIFf9SLl+DNWcW3cFnl9AV83y1QHnBDcncD2g4A=
+github.com/mr-joshcrane/oracle v0.0.0-20231002112904-67e16d68a5cf/go.mod h1:Ka+R667MUaVDDp8FgJd1kp8yIPeoeARmaivAFz0rUQI=
