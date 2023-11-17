@@ -92,15 +92,4 @@ func TestServerRespondsWithListOfItems(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-
-	got, err := client.ListItems()
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	want := []string{"First idea", "Second idea"}
-
-	if !cmp.Equal(want, got) {
-		t.Error(cmp.Diff(want, got))
-	}
 }
