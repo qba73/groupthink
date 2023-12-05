@@ -75,16 +75,14 @@ func (s *Server) Serve() {
 	}
 }
 
-func Start() error {
-	s := &Server{
-		Address: "localhost:8083",
-	}
-	err := s.Listen(s.Address)
+// Start creates and starts default groupthink server.
+// The server listens on a randomly assigned free port.
+func Start() {
+	srv := Server{}
+	err := srv.ListenAndServe()
 	if err != nil {
-		return err
+		panic(err)
 	}
-	s.Serve()
-	return nil
 }
 
 type Client struct {

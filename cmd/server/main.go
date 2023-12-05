@@ -5,9 +5,5 @@ import (
 )
 
 func main() {
-	srv := groupthink.Server{}
-	err := srv.ListenAndServe()
-	if err != nil {
-		panic(err)
-	}
+	groupthink.Start()
 }
