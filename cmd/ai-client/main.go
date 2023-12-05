@@ -17,7 +17,6 @@ func main() {
 		os.Exit(1)
 	}
 	token := os.Getenv("OPENAI_API_KEY")
-	//o := oracle.WithGPT4()(oracle.NewOracle(token))
 	o := oracle.WithGPT35Turbo()(oracle.NewOracle(token))
 	// o.SetPurpose("You generate a single creative and tangential suggestion in a brainstorming session.")
 	// o.GiveExample("Understand how OAuth works", "Create a CLI application that utilizes device flow")

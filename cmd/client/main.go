@@ -22,7 +22,6 @@ func main() {
 		if err != nil {
 			os.Exit(1)
 		}
-
 		out := c.Items
 		query := strings.Join(out, "\n")
 		fmt.Println("ITEMS>>>", query)
