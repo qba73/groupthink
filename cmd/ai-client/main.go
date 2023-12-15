@@ -3,8 +3,10 @@ package main
 import (
 	"context"
 	"fmt"
+	"math/rand"
 	"os"
 	"strings"
+	"time"
 
 	"github.com/mr-joshcrane/oracle"
 	"github.com/qba73/groupthink"
@@ -32,13 +34,17 @@ func main() {
 		out := c.Items
 		query := strings.Join(out, "\n")
 		fmt.Println("ITEMS>>>", query)
+
 		answer, err := o.Ask(context.Background(), query)
 		if err != nil {
 			fmt.Println(err)
 			os.Exit(1)
 		}
+		r := rand.Intn(20)
+		time.Sleep(time.Duration(r) * time.Second)
 
 		c.AddItem(strings.Split(answer, "\n")[0])
 		fmt.Println("PRINT>>", strings.Split(answer, "\n")[0])
+
 	}
 }

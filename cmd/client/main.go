@@ -24,6 +24,6 @@ func main() {
 		}
 		out := c.Items
 		query := strings.Join(out, "\n")
-		fmt.Println("ITEMS>>>", query)
+		fmt.Printf("ITEMS>>>\n%s\n", query)
 	}
 }
