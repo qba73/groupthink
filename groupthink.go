@@ -14,10 +14,12 @@ import (
 )
 
 type Server struct {
+	m     sync.RWMutex
+	items []string
+
 	Address  string
 	Listener net.Listener
-	items    []string
-	m        sync.RWMutex
+	lg       log.Logger
 }
 
 func (s *Server) Items() []string {
@@ -36,7 +38,7 @@ func (s *Server) ListenAndServe() error {
 	if err := s.Listen(s.Address); err != nil {
 		return err
 	}
-	fmt.Println("Listening on", s.Address)
+	s.lg.Printf("Listening on %s", s.Address)
 	s.Serve()
 	return nil
 }
@@ -55,32 +57,35 @@ func (s *Server) Serve() {
 	for {
 		conn, err := s.Listener.Accept()
 		if err != nil {
-			log.Println(err)
+			s.lg.Print(err)
 			continue
 		}
-		go func() {
-			defer conn.Close()
-			scanner := bufio.NewScanner(conn)
-			for scanner.Scan() {
-				item := scanner.Text()
-				if item != "" {
-					s.AddItem(strings.TrimSpace(item))
-				}
-				for _, i := range s.Items() {
-					fmt.Fprintln(conn, i)
-				}
-				fmt.Fprintln(conn, "OK")
-			}
-		}()
+		go s.handleConn(conn)
+	}
+}
+
+func (s *Server) handleConn(conn net.Conn) {
+	defer conn.Close()
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		item := scanner.Text()
+		if item != "" {
+			s.AddItem(strings.TrimSpace(item))
+		}
+		for _, i := range s.Items() {
+			fmt.Fprintln(conn, i)
+		}
+		fmt.Fprintln(conn, "OK")
 	}
 }
 
 // Start creates and starts default groupthink server.
 // The server listens on a randomly assigned free port.
 func Start() {
-	srv := Server{}
-	err := srv.ListenAndServe()
-	if err != nil {
+	srv := Server{
+		lg: *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
+	}
+	if err := srv.ListenAndServe(); err != nil {
 		panic(err)
 	}
 }
