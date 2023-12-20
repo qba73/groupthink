@@ -13,6 +13,19 @@ import (
 	"github.com/mr-joshcrane/oracle"
 )
 
+type client chan<- string
+
+var (
+	// all incoming messages from connected clients
+	messages = make(chan string)
+
+	// new incomming connections to the server
+	entering = make(chan client)
+
+	// dropped connections
+	leaving = make(chan client)
+)
+
 type Server struct {
 	m     sync.RWMutex
 	items []string
@@ -20,6 +33,9 @@ type Server struct {
 	Address  string
 	Listener net.Listener
 	lg       log.Logger
+
+	// keep track of connected clients
+	clients map[client]bool
 }
 
 func (s *Server) Items() []string {
@@ -54,13 +70,15 @@ func (s *Server) Listen(addr string) error {
 }
 
 func (s *Server) Serve() {
+	go s.broadcast()
 	for {
 		conn, err := s.Listener.Accept()
 		if err != nil {
 			s.lg.Print(err)
 			continue
 		}
-		go s.handleConn(conn)
+		//go s.handleConn(conn)
+		go thinkHandler(conn)
 	}
 }
 
@@ -79,11 +97,65 @@ func (s *Server) handleConn(conn net.Conn) {
 	}
 }
 
+func clientWriter(conn net.Conn, ch <-chan string) {
+	for msg := range ch {
+		fmt.Fprintln(conn, msg) // todo: add error handling
+	}
+}
+
+func thinkHandler(conn net.Conn) {
+	ch := make(chan string)
+	go clientWriter(conn, ch)
+
+	clientID := conn.RemoteAddr().String()
+	ch <- "Connected new client: " + clientID
+
+	messages <- clientID + " has joined brainstorming session"
+	entering <- ch
+
+	input := bufio.NewScanner(conn)
+	for input.Scan() {
+		messages <- clientID + ": " + input.Text()
+	}
+
+	leaving <- ch
+	messages <- clientID + " has disconnected"
+	conn.Close()
+}
+
+// braodcast sends messages to connected clients
+// and adds and removes clients from the pool.
+func (s *Server) broadcast() {
+	for {
+		select {
+		// broadcast message to all clients's outgoing message channels
+		case msg := <-messages:
+			for c := range s.clients {
+				c <- msg
+			}
+
+		// a new client connects to the server:
+		//  - add it to the client pool
+		case c := <-entering:
+			s.clients[c] = true
+
+		// a client disconnects from the server
+		//  - remove it from the pool
+		//  - close the channel (client) the client uses to communicate with the server
+		case cl := <-leaving:
+			delete(s.clients, cl)
+			close(cl)
+		}
+	}
+}
+
 // Start creates and starts default groupthink server.
 // The server listens on a randomly assigned free port.
 func Start() {
 	srv := Server{
-		lg: *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
+		lg:      *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
+		items:   make([]string, 0),
+		clients: make(map[client]bool),
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		panic(err)
