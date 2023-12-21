@@ -8,7 +8,7 @@ import (
 )
 
 func TestServerStoresItemSentByClient(t *testing.T) {
-	srv := groupthink.Server{}
+	srv := groupthink.NewServer()
 	err := srv.Listen(":0")
 	if err != nil {
 		t.Fatal(err)
@@ -34,7 +34,7 @@ func TestServerStoresItemSentByClient(t *testing.T) {
 }
 
 func TestServerStoresItemsSentByMultipleClients(t *testing.T) {
-	srv := groupthink.Server{}
+	srv := groupthink.NewServer()
 	err := srv.Listen(":0")
 	if err != nil {
 		t.Fatal(err)
@@ -71,7 +71,7 @@ func TestServerStoresItemsSentByMultipleClients(t *testing.T) {
 func TestServerRespondsWithListOfItems(t *testing.T) {
 	t.Parallel()
 
-	srv := groupthink.Server{}
+	srv := groupthink.NewServer()
 	err := srv.Listen(":0")
 	if err != nil {
 		t.Fatal(err)

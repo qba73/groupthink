@@ -3,15 +3,19 @@ package groupthink
 import (
 	"bufio"
 	"context"
+	"errors"
 	"fmt"
 	"log"
 	"net"
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mr-joshcrane/oracle"
 )
+
+var ErrServerClosed = errors.New("groupthink: Server closed")
 
 type client chan<- string
 
@@ -27,70 +31,83 @@ var (
 )
 
 type Server struct {
-	m     sync.RWMutex
-	items []string
-
 	Address  string
 	Listener net.Listener
-	lg       log.Logger
+	Log      log.Logger
 
-	// keep track of connected clients
-	clients map[client]bool
+	inShutdown atomic.Bool // set to true when server is in shutdown
+
+	m       sync.RWMutex
+	items   []string
+	clients map[client]bool // keep track of connected clients
 }
 
-func (s *Server) Items() []string {
-	s.m.RLock()
-	defer s.m.RUnlock()
-	return s.items
-}
-
-func (s *Server) AddItem(i string) {
-	s.m.Lock()
-	defer s.m.Unlock()
-	s.items = append(s.items, i)
-}
-
-func (s *Server) ListenAndServe() error {
-	if err := s.Listen(s.Address); err != nil {
-		return err
+func NewServer() *Server {
+	return &Server{
+		Log:     *log.Default(),
+		clients: make(map[client]bool),
 	}
-	s.lg.Printf("Listening on %s", s.Address)
-	s.Serve()
+}
+
+func (srv *Server) Close() error {
+	srv.inShutdown.Store(true)
 	return nil
 }
 
-func (s *Server) Listen(addr string) error {
-	l, err := net.Listen("tcp", s.Address)
+// Items returns all stored items.
+func (srv *Server) Items() []string {
+	srv.m.RLock()
+	defer srv.m.RUnlock()
+	return srv.items
+}
+
+// AddItem takes a string representing the item name and stores it in the store.
+func (srv *Server) AddItem(i string) {
+	srv.m.Lock()
+	defer srv.m.Unlock()
+	srv.items = append(srv.items, i)
+}
+
+func (srv *Server) ListenAndServe() error {
+	if err := srv.Listen(srv.Address); err != nil {
+		return err
+	}
+	srv.Serve()
+	return nil
+}
+
+func (srv *Server) Listen(addr string) error {
+	l, err := net.Listen("tcp", srv.Address)
 	if err != nil {
 		return err
 	}
-	s.Listener = l
-	s.Address = l.Addr().String()
+	srv.Listener = l
+	srv.Address = l.Addr().String()
 	return nil
 }
 
-func (s *Server) Serve() {
-	go s.broadcast()
+func (srv *Server) Serve() {
+	//go srv.broadcast()
 	for {
-		conn, err := s.Listener.Accept()
+		conn, err := srv.Listener.Accept()
 		if err != nil {
-			s.lg.Print(err)
+			srv.Log.Print(err)
 			continue
 		}
-		//go s.handleConn(conn)
-		go thinkHandler(conn)
+		go srv.handleConn(conn)
+		//go thinkHandler(conn)
 	}
 }
 
-func (s *Server) handleConn(conn net.Conn) {
+func (srv *Server) handleConn(conn net.Conn) {
 	defer conn.Close()
 	scanner := bufio.NewScanner(conn)
 	for scanner.Scan() {
 		item := scanner.Text()
 		if item != "" {
-			s.AddItem(strings.TrimSpace(item))
+			srv.AddItem(strings.TrimSpace(item))
 		}
-		for _, i := range s.Items() {
+		for _, i := range srv.Items() {
 			fmt.Fprintln(conn, i)
 		}
 		fmt.Fprintln(conn, "OK")
@@ -104,6 +121,8 @@ func clientWriter(conn net.Conn, ch <-chan string) {
 }
 
 func thinkHandler(conn net.Conn) {
+	defer conn.Close()
+
 	ch := make(chan string)
 	go clientWriter(conn, ch)
 
@@ -120,7 +139,6 @@ func thinkHandler(conn net.Conn) {
 
 	leaving <- ch
 	messages <- clientID + " has disconnected"
-	conn.Close()
 }
 
 // braodcast sends messages to connected clients
@@ -153,7 +171,7 @@ func (s *Server) broadcast() {
 // The server listens on a randomly assigned free port.
 func Start() {
 	srv := Server{
-		lg:      *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
+		Log:     *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
 		items:   make([]string, 0),
 		clients: make(map[client]bool),
 	}
