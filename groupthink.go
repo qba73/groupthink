@@ -20,69 +20,58 @@ var ErrServerClosed = errors.New("groupthink: Server closed")
 type client chan<- string
 
 var (
-	// all incoming messages from connected clients
-	messages = make(chan string)
-
-	// new incomming connections to the server
-	entering = make(chan client)
-
-	// dropped connections
-	leaving = make(chan client)
+	messages = make(chan string) // all incoming messages from connected clients
+	entering = make(chan client) // new incomming connections to the server
+	leaving  = make(chan client) // dropped connections
 )
 
 type Server struct {
-	Address  string
-	Listener net.Listener
-	Log      log.Logger
+	Address   string
+	Listener  net.Listener
+	ErrLogger log.Logger
 
 	inShutdown atomic.Bool // set to true when server is in shutdown
 
-	m       sync.RWMutex
+	mu      sync.Mutex
 	items   []string
 	clients map[client]bool // keep track of connected clients
 }
 
 func NewServer() *Server {
 	return &Server{
-		Log:     *log.Default(),
 		clients: make(map[client]bool),
 	}
 }
 
-func (srv *Server) Close() error {
-	srv.inShutdown.Store(true)
+func (s *Server) Close() error {
+	s.inShutdown.Store(true)
 	return nil
 }
 
 // Items returns all stored items.
-func (srv *Server) Items() []string {
-	srv.m.RLock()
-	defer srv.m.RUnlock()
-	return srv.items
+func (s *Server) Items() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	return s.items
 }
 
 // AddItem takes a string representing the item name and stores it in the store.
-func (srv *Server) AddItem(i string) {
-	srv.m.Lock()
-	defer srv.m.Unlock()
-	srv.items = append(srv.items, i)
+func (s *Server) AddItem(i string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	s.items = append(s.items, i)
 }
 
-func (srv *Server) ListenAndServe() error {
-	if err := srv.Listen(srv.Address); err != nil {
-		return err
+func (s *Server) Listen(addr string) error {
+	if addr == "" {
+		addr = ":0"
 	}
-	srv.Serve()
-	return nil
-}
-
-func (srv *Server) Listen(addr string) error {
-	l, err := net.Listen("tcp", srv.Address)
+	l, err := net.Listen("tcp", addr)
 	if err != nil {
 		return err
 	}
-	srv.Listener = l
-	srv.Address = l.Addr().String()
+	s.Listener = l
+	s.Address = l.Addr().String()
 	return nil
 }
 
@@ -91,12 +80,20 @@ func (srv *Server) Serve() {
 	for {
 		conn, err := srv.Listener.Accept()
 		if err != nil {
-			srv.Log.Print(err)
+			srv.ErrLogger.Print(err)
 			continue
 		}
 		go srv.handleConn(conn)
 		//go thinkHandler(conn)
 	}
+}
+
+func (s *Server) ListenAndServe() error {
+	if err := s.Listen(s.Address); err != nil {
+		return err
+	}
+	s.Serve()
+	return nil
 }
 
 func (srv *Server) handleConn(conn net.Conn) {
@@ -167,17 +164,18 @@ func (s *Server) broadcast() {
 	}
 }
 
-// Start creates and starts default groupthink server.
-// The server listens on a randomly assigned free port.
+// Start creates and starts a groupthink server.
 func Start() {
 	srv := Server{
-		Log:     *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
-		items:   make([]string, 0),
-		clients: make(map[client]bool),
+		ErrLogger: *log.New(os.Stderr, "GROUPTHINK:", log.LstdFlags),
+		items:     make([]string, 0),
+		clients:   make(map[client]bool),
 	}
-	if err := srv.ListenAndServe(); err != nil {
+	if err := srv.Listen(":0"); err != nil {
 		panic(err)
 	}
+	fmt.Fprintln(os.Stdout, "listening on: "+srv.Address)
+	srv.Serve()
 }
 
 type Client struct {
