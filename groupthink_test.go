@@ -8,11 +8,12 @@ import (
 )
 
 func TestServerStoresItemSentByClient(t *testing.T) {
-	srv := groupthink.Server{}
+	srv := groupthink.NewServer()
 	err := srv.Listen(":0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer srv.Close()
 	go srv.Serve()
 
 	client, err := groupthink.NewClient(srv.Listener.Addr().String())
@@ -34,11 +35,12 @@ func TestServerStoresItemSentByClient(t *testing.T) {
 }
 
 func TestServerStoresItemsSentByMultipleClients(t *testing.T) {
-	srv := groupthink.Server{}
+	srv := groupthink.NewServer()
 	err := srv.Listen(":0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer srv.Close()
 	go srv.Serve()
 
 	client1, err := groupthink.NewClient(srv.Address)
@@ -69,13 +71,12 @@ func TestServerStoresItemsSentByMultipleClients(t *testing.T) {
 }
 
 func TestServerRespondsWithListOfItems(t *testing.T) {
-	t.Parallel()
-
-	srv := groupthink.Server{}
+	srv := groupthink.NewServer()
 	err := srv.Listen(":0")
 	if err != nil {
 		t.Fatal(err)
 	}
+	defer srv.Close()
 
 	go srv.Serve()
 

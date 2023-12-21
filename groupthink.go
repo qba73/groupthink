@@ -9,6 +9,7 @@ import (
 	"os"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	"github.com/mr-joshcrane/oracle"
 )
@@ -27,20 +28,43 @@ var (
 )
 
 type Server struct {
-	m     sync.RWMutex
-	items []string
-
 	Address  string
 	Listener net.Listener
-	lg       log.Logger
+	Log      log.Logger
 
-	// keep track of connected clients
-	clients map[client]bool
+	inShutdown atomic.Bool
+
+	m       sync.Mutex
+	items   []string
+	clients map[client]bool // keep track of connected clients
+}
+
+func NewServer() *Server {
+	return &Server{
+		items:   make([]string, 0),
+		Log:     *log.Default(),
+		clients: make(map[client]bool),
+	}
+}
+
+func (s *Server) Close() {
+	s.inShutdown.Store(true)
+	s.m.Lock()
+	defer s.m.Unlock()
+	for c := range s.clients {
+		close(c)
+		delete(s.clients, c)
+	}
+
+	err := s.Listener.Close()
+	if err != nil {
+		s.Log.Print(err)
+	}
 }
 
 func (s *Server) Items() []string {
-	s.m.RLock()
-	defer s.m.RUnlock()
+	s.m.Lock()
+	defer s.m.Unlock()
 	return s.items
 }
 
@@ -54,7 +78,7 @@ func (s *Server) ListenAndServe() error {
 	if err := s.Listen(s.Address); err != nil {
 		return err
 	}
-	s.lg.Printf("Listening on %s", s.Address)
+	s.Log.Printf("Listening on %s", s.Address)
 	s.Serve()
 	return nil
 }
@@ -70,32 +94,33 @@ func (s *Server) Listen(addr string) error {
 }
 
 func (s *Server) Serve() {
-	go s.broadcast()
+	//go s.broadcast()
 	for {
 		conn, err := s.Listener.Accept()
 		if err != nil {
-			s.lg.Print(err)
+			s.Log.Print(err)
 			continue
 		}
 		//go s.handleConn(conn)
-		go thinkHandler(conn)
+		go s.broadcast()
+		go s.thinkHandler(conn)
 	}
 }
 
-func (s *Server) handleConn(conn net.Conn) {
-	defer conn.Close()
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		item := scanner.Text()
-		if item != "" {
-			s.AddItem(strings.TrimSpace(item))
-		}
-		for _, i := range s.Items() {
-			fmt.Fprintln(conn, i)
-		}
-		fmt.Fprintln(conn, "OK")
-	}
-}
+// func (s *Server) handleConn(conn net.Conn) {
+// 	defer conn.Close()
+// 	scanner := bufio.NewScanner(conn)
+// 	for scanner.Scan() {
+// 		item := scanner.Text()
+// 		if item != "" {
+// 			s.AddItem(strings.TrimSpace(item))
+// 		}
+// 		for _, i := range s.Items() {
+// 			fmt.Fprintln(conn, i)
+// 		}
+// 		fmt.Fprintln(conn, "OK")
+// 	}
+// }
 
 func clientWriter(conn net.Conn, ch <-chan string) {
 	for msg := range ch {
@@ -103,7 +128,7 @@ func clientWriter(conn net.Conn, ch <-chan string) {
 	}
 }
 
-func thinkHandler(conn net.Conn) {
+func (s *Server) thinkHandler(conn net.Conn) {
 	ch := make(chan string)
 	go clientWriter(conn, ch)
 
@@ -113,9 +138,17 @@ func thinkHandler(conn net.Conn) {
 	messages <- clientID + " has joined brainstorming session"
 	entering <- ch
 
-	input := bufio.NewScanner(conn)
-	for input.Scan() {
-		messages <- clientID + ": " + input.Text()
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		item := scanner.Text()
+		if item != "" {
+			s.AddItem(strings.TrimSpace(item))
+		}
+		for _, i := range s.Items() {
+			messages <- i
+		}
+		messages <- "OK"
+		// messages <- clientID + ": " + scanner.Text()
 	}
 
 	leaving <- ch
@@ -153,7 +186,7 @@ func (s *Server) broadcast() {
 // The server listens on a randomly assigned free port.
 func Start() {
 	srv := Server{
-		lg:      *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
+		Log:     *log.New(os.Stdout, "GROUPTHINK:", log.LstdFlags),
 		items:   make([]string, 0),
 		clients: make(map[client]bool),
 	}
