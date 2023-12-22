@@ -33,19 +33,17 @@ type Server struct {
 
 	inShutdown atomic.Bool // set to true when server is in shutdown
 
-	mu      sync.Mutex
-	items   []string
-	clients map[client]bool // keep track of connected clients
+	mu    sync.Mutex
+	items []string
 }
 
 func NewServer() *Server {
-	return &Server{
-		clients: make(map[client]bool),
-	}
+	return &Server{}
 }
 
 func (s *Server) Close() error {
 	s.inShutdown.Store(true)
+	// todo close connections
 	return nil
 }
 
@@ -57,13 +55,13 @@ func (s *Server) Items() []string {
 }
 
 // AddItem takes a string representing the item name and stores it in the store.
-func (s *Server) AddItem(i string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.items = append(s.items, i)
+func (srv *Server) AddItem(i string) {
+	srv.mu.Lock()
+	defer srv.mu.Unlock()
+	srv.items = append(srv.items, i)
 }
 
-func (s *Server) Listen(addr string) error {
+func (srv *Server) Listen(addr string) error {
 	if addr == "" {
 		addr = ":0"
 	}
@@ -71,29 +69,29 @@ func (s *Server) Listen(addr string) error {
 	if err != nil {
 		return err
 	}
-	s.Listener = l
-	s.Address = l.Addr().String()
+	srv.Listener = l
+	srv.Address = l.Addr().String()
 	return nil
 }
 
-func (s *Server) Serve() {
+func (srv *Server) Serve() {
 	//go srv.broadcast()
 	for {
-		conn, err := s.Listener.Accept()
+		conn, err := srv.Listener.Accept()
 		if err != nil {
-			s.ErrLogger.Print(err)
+			srv.ErrLogger.Print(err)
 			continue
 		}
-		go s.handleConn(conn)
+		go srv.handleConn(conn)
 		//go thinkHandler(conn)
 	}
 }
 
-func (s *Server) ListenAndServe() error {
-	if err := s.Listen(s.Address); err != nil {
+func (srv *Server) ListenAndServe() error {
+	if err := srv.Listen(srv.Address); err != nil {
 		return err
 	}
-	s.Serve()
+	srv.Serve()
 	return nil
 }
 
@@ -109,6 +107,33 @@ func (srv *Server) handleConn(conn net.Conn) {
 			fmt.Fprintln(conn, i)
 		}
 		fmt.Fprintln(conn, "OK")
+	}
+}
+
+// braodcast sends messages to connected clients
+// and adds and removes clients from the pool.
+func broadcast() {
+	clients := make(map[client]bool)
+	for {
+		select {
+		// broadcast message to all clients's outgoing message channels
+		case msg := <-messages:
+			for c := range clients {
+				c <- msg
+			}
+
+		// a new client connects to the server:
+		//  - add it to the client pool
+		case c := <-entering:
+			clients[c] = true
+
+		// a client disconnects from the server
+		//  - remove it from the pool
+		//  - close the channel (client) the client uses to communicate with the server
+		case cl := <-leaving:
+			delete(clients, cl)
+			close(cl)
+		}
 	}
 }
 
@@ -134,35 +159,11 @@ func thinkHandler(conn net.Conn) {
 	for input.Scan() {
 		messages <- clientID + ": " + input.Text()
 	}
+	// signal to client to disconnect
+	fmt.Fprintln(conn, "OK")
 
 	leaving <- ch
 	messages <- clientID + " has disconnected"
-}
-
-// braodcast sends messages to connected clients
-// and adds and removes clients from the pool.
-func (s *Server) broadcast() {
-	for {
-		select {
-		// broadcast message to all clients's outgoing message channels
-		case msg := <-messages:
-			for c := range s.clients {
-				c <- msg
-			}
-
-		// a new client connects to the server:
-		//  - add it to the client pool
-		case c := <-entering:
-			s.clients[c] = true
-
-		// a client disconnects from the server
-		//  - remove it from the pool
-		//  - close the channel (client) the client uses to communicate with the server
-		case cl := <-leaving:
-			delete(s.clients, cl)
-			close(cl)
-		}
-	}
 }
 
 // Start creates and starts a groupthink server.
@@ -170,7 +171,6 @@ func Start() {
 	srv := Server{
 		ErrLogger: *log.New(os.Stderr, "GROUPTHINK:", log.LstdFlags),
 		items:     make([]string, 0),
-		clients:   make(map[client]bool),
 	}
 	if err := srv.Listen(":0"); err != nil {
 		panic(err)
