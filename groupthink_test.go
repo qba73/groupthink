@@ -4,8 +4,30 @@ import (
 	"testing"
 
 	"github.com/google/go-cmp/cmp"
+	"github.com/google/go-cmp/cmp/cmpopts"
 	"github.com/qba73/groupthink"
 )
+
+func TestStoreDoesNotStoreDublicatedItems(t *testing.T) {
+	t.Parallel()
+
+	store := &groupthink.Store{
+		Ideas: make(map[string]bool),
+	}
+
+	store.Add("Rugby")
+	store.Add("Tennis")
+	store.Add("Rugby")
+
+	want := []string{"Rugby", "Tennis"}
+	got := store.List()
+
+	if !cmp.Equal(want, got) {
+		t.Error(cmp.Diff(want, got, cmpopts.SortSlices(func(i, j string) bool {
+			return i > j
+		})))
+	}
+}
 
 func TestServerStoresItemSentByClient(t *testing.T) {
 	srv := groupthink.NewServer()
