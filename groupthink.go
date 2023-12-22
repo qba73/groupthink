@@ -194,6 +194,12 @@ func (srv *Server) thinkHandler(conn net.Conn) {
 			srv.AddItem(item)
 		}
 		messages <- clientID + ": " + item
+
+		ix := srv.store.List()
+		slices.Sort(ix)
+		for _, i := range ix {
+			messages <- i
+		}
 		// signal to client to disconnect
 		ch <- "OK"
 	}
