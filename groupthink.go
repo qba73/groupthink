@@ -75,15 +75,15 @@ func (srv *Server) Listen(addr string) error {
 }
 
 func (srv *Server) Serve() {
-	//go srv.broadcast()
+	go broadcast()
 	for {
 		conn, err := srv.Listener.Accept()
 		if err != nil {
 			srv.ErrLogger.Print(err)
 			continue
 		}
-		go srv.handleConn(conn)
-		//go thinkHandler(conn)
+		//go srv.handleConn(conn)
+		go srv.thinkHandler(conn)
 	}
 }
 
@@ -143,7 +143,7 @@ func clientWriter(conn net.Conn, ch <-chan string) {
 	}
 }
 
-func thinkHandler(conn net.Conn) {
+func (srv *Server) thinkHandler(conn net.Conn) {
 	defer conn.Close()
 
 	ch := make(chan string)
@@ -155,12 +155,17 @@ func thinkHandler(conn net.Conn) {
 	messages <- clientID + " has joined brainstorming session"
 	entering <- ch
 
-	input := bufio.NewScanner(conn)
-	for input.Scan() {
-		messages <- clientID + ": " + input.Text()
+	scanner := bufio.NewScanner(conn)
+	for scanner.Scan() {
+		item := scanner.Text()
+		item = strings.TrimSpace(item)
+		if item != "" {
+			srv.AddItem(item)
+		}
+		messages <- clientID + ": " + item
+		// signal to client to disconnect
+		ch <- "OK"
 	}
-	// signal to client to disconnect
-	fmt.Fprintln(conn, "OK")
 
 	leaving <- ch
 	messages <- clientID + " has disconnected"
