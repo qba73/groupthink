@@ -9,6 +9,7 @@ import (
 	"log"
 	"net"
 	"os"
+	"slices"
 	"strings"
 	"sync"
 	"sync/atomic"
@@ -26,6 +27,35 @@ var (
 	leaving  = make(chan client) // dropped connections
 )
 
+type Storer interface {
+	Add(string)
+	List() []string
+}
+
+type Store struct {
+	mu    sync.Mutex
+	Ideas map[string]bool
+}
+
+func (s *Store) Add(idea string) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	idea = strings.TrimSpace(idea)
+	if _, ok := s.Ideas[idea]; !ok {
+		s.Ideas[idea] = true
+	}
+}
+
+func (s *Store) List() []string {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	ix := make([]string, 0, len(s.Ideas))
+	for k := range s.Ideas {
+		ix = append(ix, k)
+	}
+	return ix
+}
+
 type Server struct {
 	Address   string
 	Listener  net.Listener
@@ -33,32 +63,34 @@ type Server struct {
 
 	inShutdown atomic.Bool // set to true when server is in shutdown
 
-	mu    sync.Mutex
-	items []string
+	// storage for brainstorming ideas
+	store Storer
 }
 
 func NewServer() *Server {
-	return &Server{}
+	return &Server{
+		store: &Store{
+			Ideas: make(map[string]bool),
+		},
+	}
 }
 
-func (s *Server) Close() error {
-	s.inShutdown.Store(true)
-	// todo close connections
+func (srv *Server) Close() error {
+	srv.inShutdown.Store(true)
+	// todo close connections (?)
 	return nil
 }
 
 // Items returns all stored items.
-func (s *Server) Items() []string {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	return s.items
+func (srv *Server) Items() []string {
+	ix := srv.store.List()
+	slices.Sort(ix)
+	return ix
 }
 
 // AddItem takes a string representing the item name and stores it in the store.
 func (srv *Server) AddItem(i string) {
-	srv.mu.Lock()
-	defer srv.mu.Unlock()
-	srv.items = append(srv.items, i)
+	srv.store.Add(i)
 }
 
 func (srv *Server) Listen(addr string) error {
@@ -82,7 +114,6 @@ func (srv *Server) Serve() {
 			srv.ErrLogger.Print(err)
 			continue
 		}
-		//go srv.handleConn(conn)
 		go srv.thinkHandler(conn)
 	}
 }
@@ -95,20 +126,20 @@ func (srv *Server) ListenAndServe() error {
 	return nil
 }
 
-func (srv *Server) handleConn(conn net.Conn) {
-	defer conn.Close()
-	scanner := bufio.NewScanner(conn)
-	for scanner.Scan() {
-		item := scanner.Text()
-		if item != "" {
-			srv.AddItem(strings.TrimSpace(item))
-		}
-		for _, i := range srv.Items() {
-			fmt.Fprintln(conn, i)
-		}
-		fmt.Fprintln(conn, "OK")
-	}
-}
+// func (srv *Server) handleConn(conn net.Conn) {
+// 	defer conn.Close()
+// 	scanner := bufio.NewScanner(conn)
+// 	for scanner.Scan() {
+// 		item := scanner.Text()
+// 		if item != "" {
+// 			srv.AddItem(strings.TrimSpace(item))
+// 		}
+// 		for _, i := range srv.Items() {
+// 			fmt.Fprintln(conn, i)
+// 		}
+// 		fmt.Fprintln(conn, "OK")
+// 	}
+// }
 
 // braodcast sends messages to connected clients
 // and adds and removes clients from the pool.
@@ -173,10 +204,7 @@ func (srv *Server) thinkHandler(conn net.Conn) {
 
 // Start creates and starts a groupthink server.
 func Start() {
-	srv := Server{
-		ErrLogger: *log.New(os.Stderr, "GROUPTHINK:", log.LstdFlags),
-		items:     make([]string, 0),
-	}
+	srv := NewServer()
 	if err := srv.Listen(":0"); err != nil {
 		panic(err)
 	}
