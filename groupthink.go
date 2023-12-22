@@ -5,6 +5,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"io"
 	"log"
 	"net"
 	"os"
@@ -75,15 +76,15 @@ func (s *Server) Listen(addr string) error {
 	return nil
 }
 
-func (srv *Server) Serve() {
+func (s *Server) Serve() {
 	//go srv.broadcast()
 	for {
-		conn, err := srv.Listener.Accept()
+		conn, err := s.Listener.Accept()
 		if err != nil {
-			srv.ErrLogger.Print(err)
+			s.ErrLogger.Print(err)
 			continue
 		}
-		go srv.handleConn(conn)
+		go s.handleConn(conn)
 		//go thinkHandler(conn)
 	}
 }
@@ -246,4 +247,23 @@ func RunAIClient() {
 		c.AddItem(strings.Split(answer, "\n")[0])
 		fmt.Println("PRINT>>", strings.Split(answer, "\n")[0])
 	}
+}
+
+func RunClient(addr string) {
+	conn, err := net.Dial("tcp", addr)
+	if err != nil {
+		panic(err)
+	}
+
+	done := make(chan bool)
+	go func() {
+		io.Copy(os.Stdout, conn)
+		done <- true
+	}()
+
+	if _, err := io.Copy(conn, os.Stdin); err != nil {
+		panic(err)
+	}
+	conn.Close()
+	<-done
 }
