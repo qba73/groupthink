@@ -86,7 +86,9 @@ func TestServerStoresItemsSentByMultipleClients(t *testing.T) {
 	want := []string{"First Idea", "Second Idea"}
 
 	if !cmp.Equal(want, got) {
-		t.Error(cmp.Diff(want, got))
+		t.Error(cmp.Diff(want, got, cmpopts.SortSlices(func(i, j string) bool {
+			return i > j
+		})))
 	}
 }
 
