@@ -53,6 +53,7 @@ func (s *Store) List() []string {
 	for k := range s.Ideas {
 		ix = append(ix, k)
 	}
+	slices.Sort(ix)
 	return ix
 }
 
@@ -196,7 +197,6 @@ func (srv *Server) thinkHandler(conn net.Conn) {
 		messages <- clientID + ": " + item
 
 		ix := srv.store.List()
-		slices.Sort(ix)
 		for _, i := range ix {
 			messages <- i
 		}
